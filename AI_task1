@@ -1,0 +1,130 @@
+// app.js
+const express = require('express');
+const axios = require('axios');
+const path = require('path');
+const app = express();
+const port = 3000;
+
+// Google Translate API key
+const API_KEY = 'YOUR_GOOGLE_API_KEY';  // Replace with your API key
+const API_URL = 'https://translation.googleapis.com/language/translate/v2';
+
+app.use(express.static('public')); // Serve static files
+app.use(express.json());
+
+// API endpoint for translation
+app.post('/translate', async (req, res) => {
+    const { text, sourceLang, targetLang } = req.body;
+
+    try {
+        const response = await axios.post(API_URL, {
+            q: text,
+            source: sourceLang,
+            target: targetLang,
+            format: 'text',
+            key: API_KEY
+        });
+
+        res.json({
+            translatedText: response.data.data.translations[0].translatedText
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Error translating text');
+    }
+});
+
+// Serve HTML, CSS, and JS
+app.get('/', (req, res) => {
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Language Translator</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                padding: 20px;
+            }
+            #translate-btn {
+                margin-top: 10px;
+                padding: 10px;
+            }
+            #translated-text {
+                margin-top: 20px;
+                font-size: 1.2em;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Language Translation Tool</h1>
+        
+        <textarea id="input-text" rows="4" cols="50" placeholder="Enter text to translate"></textarea><br><br>
+
+        <label for="source-lang">From:</label>
+        <select id="source-lang">
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+        </select>
+
+        <label for="target-lang">To:</label>
+        <select id="target-lang">
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="en">English</option>
+        </select><br><br>
+
+        <button id="translate-btn">Translate</button><br><br>
+
+        <h3>Translated Text:</h3>
+        <div id="translated-text"></div>
+        
+        <button id="copy-btn">Copy</button>
+        <button id="speak-btn">Speak</button>
+
+        <script>
+            // Translate button event listener
+            document.getElementById('translate-btn').addEventListener('click', async () => {
+                const inputText = document.getElementById('input-text').value;
+                const sourceLang = document.getElementById('source-lang').value;
+                const targetLang = document.getElementById('target-lang').value;
+
+                const response = await fetch('/translate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: inputText, sourceLang, targetLang })
+                });
+
+                const data = await response.json();
+                document.getElementById('translated-text').innerText = data.translatedText;
+            });
+
+            // Copy button event listener
+            document.getElementById('copy-btn').addEventListener('click', () => {
+                const translatedText = document.getElementById('translated-text').innerText;
+                navigator.clipboard.writeText(translatedText);
+            });
+
+            // Text-to-Speech button event listener
+            document.getElementById('speak-btn').addEventListener('click', () => {
+                const translatedText = document.getElementById('translated-text').innerText;
+                const utterance = new SpeechSynthesisUtterance(translatedText);
+                speechSynthesis.speak(utterance);
+            });
+        </script>
+    </body>
+    </html>
+    `);
+});
+
+// Start the server
+app.listen(port, () => {
+    console.log(`Server running on http://localhost:${port}`);
+});
