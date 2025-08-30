@@ -1,0 +1,139 @@
+// app.js (Node.js backend)
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const natural = require('natural');
+const app = express();
+const port = 3000;
+
+// Enable CORS for the frontend
+app.use(cors());
+app.use(bodyParser.json());
+
+// Example FAQs - You can replace this with a database or file
+const faqs = [
+    { question: "What is your return policy?", answer: "You can return items within 30 days." },
+    { question: "How can I track my order?", answer: "You will receive an email with tracking details once your order ships." },
+    { question: "Do you offer free shipping?", answer: "Yes, we offer free shipping on orders over $50." },
+    { question: "How do I contact customer support?", answer: "You can contact us via email at support@example.com." }
+];
+
+// Tokenize and clean the FAQ questions
+function preprocess(text) {
+    return text.toLowerCase().replace(/[^a-zA-Z0-9\s]/g, '');
+}
+
+// Cosine similarity for text matching
+function getCosineSimilarity(query, faq) {
+    const tokenizer = new natural.WordTokenizer();
+    const tfidf = new natural.TfIdf();
+    
+    // Adding both user query and FAQ question for comparison
+    tfidf.addDocument(query);
+    tfidf.addDocument(faq);
+
+    const queryVector = tfidf.listTerms(0).map(term => term.tf);
+    const faqVector = tfidf.listTerms(1).map(term => term.tf);
+
+    let dotProduct = 0;
+    let queryMagnitude = 0;
+    let faqMagnitude = 0;
+
+    queryVector.forEach((val, index) => {
+        dotProduct += val * faqVector[index] || 0;
+        queryMagnitude += val ** 2;
+        faqMagnitude += (faqVector[index] || 0) ** 2;
+    });
+
+    queryMagnitude = Math.sqrt(queryMagnitude);
+    faqMagnitude = Math.sqrt(faqMagnitude);
+
+    return dotProduct / (queryMagnitude * faqMagnitude);
+}
+
+// Match the user query to the most similar FAQ
+app.post('/chat', (req, res) => {
+    const { userQuery } = req.body;
+    const processedQuery = preprocess(userQuery);
+
+    let bestMatch = { score: 0, answer: '' };
+
+    faqs.forEach(faq => {
+        const score = getCosineSimilarity(processedQuery, preprocess(faq.question));
+        if (score > bestMatch.score) {
+            bestMatch = { score, answer: faq.answer };
+        }
+    });
+
+    res.json({ answer: bestMatch.answer || "Sorry, I couldn't find an answer to that question." });
+});
+
+// Serve the chat UI
+app.get('/', (req, res) => {
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>FAQ Chatbot</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                padding: 20px;
+            }
+            #chat-box {
+                border: 1px solid #ccc;
+                padding: 10px;
+                height: 400px;
+                overflow-y: scroll;
+            }
+            #chat-input {
+                width: 100%;
+                padding: 10px;
+                margin-top: 10px;
+            }
+            #send-btn {
+                padding: 10px;
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                cursor: pointer;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>FAQ Chatbot</h1>
+        <div id="chat-box"></div>
+        <textarea id="chat-input" rows="3" placeholder="Ask a question..."></textarea><br>
+        <button id="send-btn">Send</button>
+
+        <script>
+            document.getElementById('send-btn').addEventListener('click', async function() {
+                const userQuery = document.getElementById('chat-input').value;
+                if (userQuery.trim() === "") return;
+
+                const chatBox = document.getElementById('chat-box');
+                chatBox.innerHTML += "<b>You:</b> " + userQuery + "<br>";
+
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userQuery })
+                });
+
+                const data = await response.json();
+                chatBox.innerHTML += "<b>Bot:</b> " + data.answer + "<br>";
+                document.getElementById('chat-input').value = '';
+                chatBox.scrollTop = chatBox.scrollHeight;
+            });
+        </script>
+    </body>
+    </html>
+    `);
+});
+
+// Start the server
+app.listen(port, () => {
+    console.log(`Server running on http://localhost:${port}`);
+});
